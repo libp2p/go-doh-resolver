@@ -22,19 +22,33 @@ func NewResolver(url string) *Resolver {
 
 var _ madns.BasicResolver = (*Resolver)(nil)
 
-func (r *Resolver) LookupIPAddr(ctx context.Context, domain string) ([]net.IPAddr, error) {
-	ip4, err := doRequestA(ctx, r.url, domain)
-	if err != nil {
-		return nil, err
+func (r *Resolver) LookupIPAddr(ctx context.Context, domain string) (result []net.IPAddr, err error) {
+	type response struct {
+		ips []net.IPAddr
+		err error
 	}
 
-	ip6, err := doRequestAAAA(ctx, r.url, domain)
-	if err != nil {
-		return nil, err
+	resch := make(chan response, 2)
+	go func() {
+		ip4, err := doRequestA(ctx, r.url, domain)
+		resch <- response{ip4, err}
+	}()
+
+	go func() {
+		ip6, err := doRequestAAAA(ctx, r.url, domain)
+		resch <- response{ip6, err}
+	}()
+
+	for i := 0; i < 2; i++ {
+		r := <-resch
+		if r.err != nil {
+			return nil, r.err
+		}
+
+		result = append(result, r.ips...)
 	}
 
-	result := append(ip4, ip6...)
-	return result, err
+	return result, nil
 }
 
 func (r *Resolver) LookupTXT(ctx context.Context, domain string) ([]string, error) {
