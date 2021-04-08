@@ -16,9 +16,6 @@ func NewResolver(url string) *Resolver {
 	if !strings.HasPrefix(url, "https://") {
 		url = "https://" + url
 	}
-	if !strings.HasSuffix(url, "/dns-query") {
-		url = url + "/dns-query"
-	}
 
 	return &Resolver{url: url}
 }
