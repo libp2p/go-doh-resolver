@@ -10,7 +10,7 @@ import (
 
 	"github.com/miekg/dns"
 
-	logging "github.com/ipfs/go-log"
+	logging "github.com/ipfs/go-log/v2"
 )
 
 const (
