@@ -8,7 +8,7 @@ import (
 func TestLookupIPAddr(t *testing.T) {
 	r := NewResolver("https://cloudflare-dns.com/dns-query")
 
-	ips, err := r.LookupIPAddr(context.Background(), "ewr-1.bootstrap.libp2p.io")
+	ips, err := r.LookupIPAddr(context.Background(), "libp2p.io")
 	if err != nil {
 		t.Fatal(err)
 	}
