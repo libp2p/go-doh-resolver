@@ -15,6 +15,20 @@ func TestLookupIPAddr(t *testing.T) {
 	if len(ips) == 0 {
 		t.Fatal("got no IPs")
 	}
+	var got4, got6 bool
+	for _, ip := range ips {
+		if len(ip.IP.To4()) == 4 {
+			got4 = true
+		} else {
+			got6 = true
+		}
+	}
+	if !got4 {
+		t.Fatal("got no IPv4 addresses")
+	}
+	if !got6 {
+		t.Fatal("got no IPv6 addresses")
+	}
 }
 
 func TestLookupTXT(t *testing.T) {
