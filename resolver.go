@@ -13,7 +13,7 @@ import (
 )
 
 type Resolver struct {
-	sync.Mutex
+	sync.RWMutex
 	url string
 
 	// RR cache
@@ -101,8 +101,8 @@ func (r *Resolver) LookupTXT(ctx context.Context, domain string) ([]string, erro
 }
 
 func (r *Resolver) getCachedIPAddr(domain string) ([]net.IPAddr, bool) {
-	r.Lock()
-	defer r.Unlock()
+	r.RLock()
+	defer r.RUnlock()
 
 	fqdn := dns.Fqdn(domain)
 	entry, ok := r.ipCache[fqdn]
@@ -131,8 +131,8 @@ func (r *Resolver) cacheIPAddr(domain string, ips []net.IPAddr, ttl uint32) {
 }
 
 func (r *Resolver) getCachedTXT(domain string) ([]string, bool) {
-	r.Lock()
-	defer r.Unlock()
+	r.RLock()
+	defer r.RUnlock()
 
 	fqdn := dns.Fqdn(domain)
 	entry, ok := r.txtCache[fqdn]
