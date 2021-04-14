@@ -62,7 +62,7 @@ func doRequest(ctx context.Context, url string, m *dns.Msg) (*dns.Msg, error) {
 	return r, nil
 }
 
-func doRequestA(ctx context.Context, url string, domain string) ([]net.IPAddr, error) {
+func doRequestA(ctx context.Context, url string, domain string) ([]net.IPAddr, uint32, error) {
 	fqdn := dns.Fqdn(domain)
 
 	m := new(dns.Msg)
@@ -70,23 +70,27 @@ func doRequestA(ctx context.Context, url string, domain string) ([]net.IPAddr, e
 
 	r, err := doRequest(ctx, url, m)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
+	var ttl uint32
 	result := make([]net.IPAddr, 0, len(r.Answer))
 	for _, rr := range r.Answer {
 		switch v := rr.(type) {
 		case *dns.A:
 			result = append(result, net.IPAddr{IP: v.A})
+			if ttl == 0 || v.Hdr.Ttl < ttl {
+				ttl = v.Hdr.Ttl
+			}
 		default:
 			log.Warnf("unexpected DNS resource record %+v", rr)
 		}
 	}
 
-	return result, nil
+	return result, ttl, nil
 }
 
-func doRequestAAAA(ctx context.Context, url string, domain string) ([]net.IPAddr, error) {
+func doRequestAAAA(ctx context.Context, url string, domain string) ([]net.IPAddr, uint32, error) {
 	fqdn := dns.Fqdn(domain)
 
 	m := new(dns.Msg)
@@ -94,23 +98,28 @@ func doRequestAAAA(ctx context.Context, url string, domain string) ([]net.IPAddr
 
 	r, err := doRequest(ctx, url, m)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
+	var ttl uint32
 	result := make([]net.IPAddr, 0, len(r.Answer))
 	for _, rr := range r.Answer {
 		switch v := rr.(type) {
 		case *dns.AAAA:
 			result = append(result, net.IPAddr{IP: v.AAAA})
+			if ttl == 0 || v.Hdr.Ttl < ttl {
+				ttl = v.Hdr.Ttl
+			}
+
 		default:
 			log.Warnf("unexpected DNS resource record %+v", rr)
 		}
 	}
 
-	return result, nil
+	return result, ttl, nil
 }
 
-func doRequestTXT(ctx context.Context, url string, domain string) ([]string, error) {
+func doRequestTXT(ctx context.Context, url string, domain string) ([]string, uint32, error) {
 	fqdn := dns.Fqdn(domain)
 
 	m := new(dns.Msg)
@@ -118,18 +127,23 @@ func doRequestTXT(ctx context.Context, url string, domain string) ([]string, err
 
 	r, err := doRequest(ctx, url, m)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
+	var ttl uint32
 	var result []string
 	for _, rr := range r.Answer {
 		switch v := rr.(type) {
 		case *dns.TXT:
 			result = append(result, v.Txt...)
+			if ttl == 0 || v.Hdr.Ttl < ttl {
+				ttl = v.Hdr.Ttl
+			}
+
 		default:
 			log.Warnf("unexpected DNS resource record %+v", rr)
 		}
 	}
 
-	return result, nil
+	return result, ttl, nil
 }
