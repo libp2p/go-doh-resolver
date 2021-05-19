@@ -13,7 +13,7 @@ import (
 )
 
 type Resolver struct {
-	sync.Mutex
+	mx sync.Mutex
 	url string
 
 	// RR cache
@@ -101,8 +101,8 @@ func (r *Resolver) LookupTXT(ctx context.Context, domain string) ([]string, erro
 }
 
 func (r *Resolver) getCachedIPAddr(domain string) ([]net.IPAddr, bool) {
-	r.Lock()
-	defer r.Unlock()
+	r.mx.Lock()
+	defer r.mx.Unlock()
 
 	fqdn := dns.Fqdn(domain)
 	entry, ok := r.ipCache[fqdn]
@@ -123,16 +123,16 @@ func (r *Resolver) cacheIPAddr(domain string, ips []net.IPAddr, ttl uint32) {
 		return
 	}
 
-	r.Lock()
-	defer r.Unlock()
+	r.mx.Lock()
+	defer r.mx.Unlock()
 
 	fqdn := dns.Fqdn(domain)
 	r.ipCache[fqdn] = ipAddrEntry{ips, time.Now().Add(time.Duration(ttl) * time.Second)}
 }
 
 func (r *Resolver) getCachedTXT(domain string) ([]string, bool) {
-	r.Lock()
-	defer r.Unlock()
+	r.mx.Lock()
+	defer r.mx.Unlock()
 
 	fqdn := dns.Fqdn(domain)
 	entry, ok := r.txtCache[fqdn]
@@ -153,8 +153,8 @@ func (r *Resolver) cacheTXT(domain string, txt []string, ttl uint32) {
 		return
 	}
 
-	r.Lock()
-	defer r.Unlock()
+	r.mx.Lock()
+	defer r.mx.Unlock()
 
 	fqdn := dns.Fqdn(domain)
 	r.txtCache[fqdn] = txtEntry{txt, time.Now().Add(time.Duration(ttl) * time.Second)}
