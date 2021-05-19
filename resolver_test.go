@@ -1,7 +1,6 @@
 package doh
 
 import (
-	"bytes"
 	"context"
 	"net"
 	"testing"
@@ -74,7 +73,7 @@ func sameIPs(a, b []net.IPAddr) bool {
 	}
 
 	for i := range a {
-		if !bytes.Equal(a[i].IP, b[i].IP) {
+		if !a[i].IP.Equal(b[i].IP) {
 			return false
 		}
 	}
