@@ -13,7 +13,7 @@ import (
 )
 
 type Resolver struct {
-	mx sync.Mutex
+	mx  sync.Mutex
 	url string
 
 	// RR cache
