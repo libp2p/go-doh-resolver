@@ -32,7 +32,7 @@ type txtEntry struct {
 }
 
 func NewResolver(url string) *Resolver {
-	if !strings.HasPrefix(url, "https://") {
+	if !strings.HasPrefix(url, "https:") {
 		url = "https://" + url
 	}
 
