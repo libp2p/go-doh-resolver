@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/miekg/dns"
 )
@@ -76,7 +77,10 @@ func TestLookupIPAddr(t *testing.T) {
 	})
 	defer resolver.Close()
 
-	r := NewResolver("")
+	r, err := NewResolver("https://cloudflare-dns.com/dns-query")
+	if err != nil {
+		t.Fatal("resolver cannot be initialised")
+	}
 	r.url = resolver.URL
 
 	ips, err := r.LookupIPAddr(context.Background(), domain)
@@ -120,7 +124,42 @@ func TestLookupTXT(t *testing.T) {
 	})
 	defer resolver.Close()
 
-	r := NewResolver("")
+	r, err := NewResolver("")
+	if err != nil {
+		t.Fatal("resolver cannot be initialised")
+	}
+	r.url = resolver.URL
+
+	txt, err := r.LookupTXT(context.Background(), domain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(txt) == 0 {
+		t.Fatal("got no TXT entries")
+	}
+
+	// check the cache
+	txt2, ok := r.getCachedTXT(domain)
+	if !ok {
+		t.Fatal("expected cache to be populated")
+	}
+	if !sameTXT(txt, txt2) {
+		t.Fatal("expected cache to contain the same txt entries")
+	}
+}
+
+func TestLookupCache(t *testing.T) {
+	domain := "example.com"
+	resolver := mockDoHResolver(t, map[uint16]*dns.Msg{
+		dns.TypeTXT: mockDNSAnswerTXT(dns.Fqdn(domain), []string{"dnslink=/ipns/example.com"}),
+	})
+	defer resolver.Close()
+
+	const cacheTTL = time.Second
+	r, err := NewResolver("", WithMaxCacheTTL(cacheTTL))
+	if err != nil {
+		t.Fatal("resolver cannot be initialised")
+	}
 	r.url = resolver.URL
 
 	txt, err := r.LookupTXT(context.Background(), domain)
@@ -140,6 +179,15 @@ func TestLookupTXT(t *testing.T) {
 		t.Fatal("expected cache to contain the same txt entries")
 	}
 
+	// check cache is empty after its maxTTL
+	time.Sleep(cacheTTL)
+	txt2, ok = r.getCachedTXT(domain)
+	if ok {
+		t.Fatal("expected cache to be empty")
+	}
+	if txt2 != nil {
+		t.Fatal("expected cache to not contain a txt entry")
+	}
 }
 
 func sameIPs(a, b []net.IPAddr) bool {
