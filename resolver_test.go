@@ -2,7 +2,7 @@ package doh
 
 import (
 	"context"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -51,7 +51,7 @@ func mockDNSAnswerTXT(name string, records []string) *dns.Msg {
 
 func mockDoHResolver(t *testing.T, msgs map[uint16]*dns.Msg) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
-		body, err := ioutil.ReadAll(req.Body)
+		body, err := io.ReadAll(req.Body)
 		if err != nil {
 			t.Fatal("sent request body to the mock DoH resolver cannot be read")
 		}
