@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/miekg/dns"
+	"golang.org/x/net/proxy"
 
 	logging "github.com/ipfs/go-log/v2"
 )
@@ -19,7 +20,7 @@ const (
 
 var log = logging.Logger("doh")
 
-func doRequest(ctx context.Context, url string, m *dns.Msg) (*dns.Msg, error) {
+func doRequest(ctx context.Context, url string, m *dns.Msg, dialer proxy.Dialer) (*dns.Msg, error) {
 	data, err := m.Pack()
 	if err != nil {
 		return nil, err
@@ -34,14 +35,18 @@ func doRequest(ctx context.Context, url string, m *dns.Msg) (*dns.Msg, error) {
 	req.Header.Set("Accept", dohMimeType)
 
 	req = req.WithContext(ctx)
-
-	resp, err := http.DefaultClient.Do(req)
+	client := http.DefaultClient
+	if dialer != nil {
+		client = &http.Client{Transport: &http.Transport{Dial: dialer.Dial}}
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		fmt.Println(resp.Status, resp.StatusCode)
 		return nil, fmt.Errorf("HTTP error: %q [%d]", resp.Status, resp.StatusCode)
 	}
 
@@ -62,13 +67,13 @@ func doRequest(ctx context.Context, url string, m *dns.Msg) (*dns.Msg, error) {
 	return r, nil
 }
 
-func doRequestA(ctx context.Context, url string, domain string) ([]net.IPAddr, uint32, error) {
+func doRequestA(ctx context.Context, url string, domain string, dialer proxy.Dialer) ([]net.IPAddr, uint32, error) {
 	fqdn := dns.Fqdn(domain)
 
 	m := new(dns.Msg)
 	m.SetQuestion(fqdn, dns.TypeA)
 
-	r, err := doRequest(ctx, url, m)
+	r, err := doRequest(ctx, url, m, dialer)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -90,13 +95,13 @@ func doRequestA(ctx context.Context, url string, domain string) ([]net.IPAddr, u
 	return result, ttl, nil
 }
 
-func doRequestAAAA(ctx context.Context, url string, domain string) ([]net.IPAddr, uint32, error) {
+func doRequestAAAA(ctx context.Context, url string, domain string, dialer proxy.Dialer) ([]net.IPAddr, uint32, error) {
 	fqdn := dns.Fqdn(domain)
 
 	m := new(dns.Msg)
 	m.SetQuestion(fqdn, dns.TypeAAAA)
 
-	r, err := doRequest(ctx, url, m)
+	r, err := doRequest(ctx, url, m, dialer)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -119,13 +124,13 @@ func doRequestAAAA(ctx context.Context, url string, domain string) ([]net.IPAddr
 	return result, ttl, nil
 }
 
-func doRequestTXT(ctx context.Context, url string, domain string) ([]string, uint32, error) {
+func doRequestTXT(ctx context.Context, url string, domain string, dialer proxy.Dialer) ([]string, uint32, error) {
 	fqdn := dns.Fqdn(domain)
 
 	m := new(dns.Msg)
 	m.SetQuestion(fqdn, dns.TypeTXT)
 
-	r, err := doRequest(ctx, url, m)
+	r, err := doRequest(ctx, url, m, dialer)
 	if err != nil {
 		return nil, 0, err
 	}

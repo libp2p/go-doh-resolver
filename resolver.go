@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+	"golang.org/x/net/proxy"
 
 	madns "github.com/multiformats/go-multiaddr-dns"
 )
@@ -21,6 +22,7 @@ type Resolver struct {
 	ipCache     map[string]ipAddrEntry
 	txtCache    map[string]txtEntry
 	maxCacheTTL time.Duration
+	dialer      proxy.Dialer
 }
 
 type ipAddrEntry struct {
@@ -47,6 +49,13 @@ func WithMaxCacheTTL(maxCacheTTL time.Duration) Option {
 func WithCacheDisabled() Option {
 	return func(tr *Resolver) error {
 		tr.maxCacheTTL = 0
+		return nil
+	}
+}
+
+func WithDialer(dialer proxy.Dialer) Option {
+	return func(tr *Resolver) error {
+		tr.dialer = dialer
 		return nil
 	}
 }
@@ -88,12 +97,12 @@ func (r *Resolver) LookupIPAddr(ctx context.Context, domain string) (result []ne
 
 	resch := make(chan response, 2)
 	go func() {
-		ip4, ttl, err := doRequestA(ctx, r.url, domain)
+		ip4, ttl, err := doRequestA(ctx, r.url, domain, r.dialer)
 		resch <- response{ip4, ttl, err}
 	}()
 
 	go func() {
-		ip6, ttl, err := doRequestAAAA(ctx, r.url, domain)
+		ip6, ttl, err := doRequestAAAA(ctx, r.url, domain, r.dialer)
 		resch <- response{ip6, ttl, err}
 	}()
 
@@ -121,7 +130,7 @@ func (r *Resolver) LookupTXT(ctx context.Context, domain string) ([]string, erro
 		return result, nil
 	}
 
-	result, ttl, err := doRequestTXT(ctx, r.url, domain)
+	result, ttl, err := doRequestTXT(ctx, r.url, domain, r.dialer)
 	if err != nil {
 		return nil, err
 	}
