@@ -1,6 +1,7 @@
 module github.com/libp2p/go-doh-resolver
 
-go 1.20
+go 1.21
+
 
 require (
 	github.com/ipfs/go-log/v2 v2.1.3
