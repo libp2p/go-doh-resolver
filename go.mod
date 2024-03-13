@@ -2,7 +2,6 @@ module github.com/libp2p/go-doh-resolver
 
 go 1.21
 
-
 require (
 	github.com/ipfs/go-log/v2 v2.1.3
 	github.com/miekg/dns v1.1.41
