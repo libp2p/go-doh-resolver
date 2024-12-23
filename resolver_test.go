@@ -124,11 +124,10 @@ func TestLookupTXT(t *testing.T) {
 	})
 	defer resolver.Close()
 
-	r, err := NewResolver("")
+	r, err := NewResolver(resolver.URL)
 	if err != nil {
 		t.Fatal("resolver cannot be initialised")
 	}
-	r.url = resolver.URL
 
 	txt, err := r.LookupTXT(context.Background(), domain)
 	if err != nil {
@@ -156,11 +155,10 @@ func TestLookupCache(t *testing.T) {
 	defer resolver.Close()
 
 	const cacheTTL = time.Second
-	r, err := NewResolver("", WithMaxCacheTTL(cacheTTL))
+	r, err := NewResolver(resolver.URL, WithMaxCacheTTL(cacheTTL))
 	if err != nil {
 		t.Fatal("resolver cannot be initialised")
 	}
-	r.url = resolver.URL
 
 	txt, err := r.LookupTXT(context.Background(), domain)
 	if err != nil {

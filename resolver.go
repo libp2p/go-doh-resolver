@@ -52,7 +52,7 @@ func WithCacheDisabled() Option {
 }
 
 func NewResolver(url string, opts ...Option) (*Resolver, error) {
-	if !strings.HasPrefix(url, "https:") {
+	if !strings.HasPrefix(url, "https:") && !strings.HasPrefix(url, "http:") {
 		url = "https://" + url
 	}
 
