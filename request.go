@@ -42,7 +42,7 @@ func doRequest(ctx context.Context, url string, m *dns.Msg) (*dns.Msg, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP error: %q [%d]", resp.Status, resp.StatusCode)
+		return nil, fmt.Errorf("HTTP error: %q [%d] from %q", resp.Status, resp.StatusCode, url)
 	}
 
 	if ct := resp.Header.Get("Content-Type"); ct != dohMimeType {
