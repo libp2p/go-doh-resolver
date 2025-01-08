@@ -124,11 +124,10 @@ func TestLookupTXT(t *testing.T) {
 	})
 	defer resolver.Close()
 
-	r, err := NewResolver("")
+	r, err := NewResolver(resolver.URL)
 	if err != nil {
 		t.Fatal("resolver cannot be initialised")
 	}
-	r.url = resolver.URL
 
 	txt, err := r.LookupTXT(context.Background(), domain)
 	if err != nil {
@@ -156,11 +155,10 @@ func TestLookupCache(t *testing.T) {
 	defer resolver.Close()
 
 	const cacheTTL = time.Second
-	r, err := NewResolver("", WithMaxCacheTTL(cacheTTL))
+	r, err := NewResolver(resolver.URL, WithMaxCacheTTL(cacheTTL))
 	if err != nil {
 		t.Fatal("resolver cannot be initialised")
 	}
-	r.url = resolver.URL
 
 	txt, err := r.LookupTXT(context.Background(), domain)
 	if err != nil {
@@ -187,6 +185,34 @@ func TestLookupCache(t *testing.T) {
 	}
 	if txt2 != nil {
 		t.Fatal("expected cache to not contain a txt entry")
+	}
+}
+
+func TestCleartextRemoteEndpoint(t *testing.T) {
+	// use remote endpoint over http and not https
+	_, err := NewResolver("http://cloudflare-dns.com/dns-query")
+	if err == nil {
+		t.Fatal("using remote DoH endpoint over unencrypted http:// expected should produce error, but expected error was not returned")
+	}
+}
+
+func TestCleartextLocalhostEndpoint(t *testing.T) {
+	testCases := []struct{ hostname string }{
+		{hostname: "localhost"},
+		{hostname: "localhost:8080"},
+		{hostname: "127.0.0.1"},
+		{hostname: "127.0.0.1:8080"},
+		{hostname: "[::1]"},
+		{hostname: "[::1]:8080"},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.hostname, func(t *testing.T) {
+			// use local endpoint over http and not https
+			_, err := NewResolver("http://" + tc.hostname + "/dns-query")
+			if err != nil {
+				t.Fatalf("using %q DoH endpoint over unencrypted http:// expected to work, but unexpected error was returned instead", tc.hostname)
+			}
+		})
 	}
 }
 
