@@ -124,19 +124,29 @@ func (r *Resolver) LookupIPAddr(ctx context.Context, domain string) (result []ne
 }
 
 func (r *Resolver) LookupTXT(ctx context.Context, domain string) ([]string, error) {
-	result, ok := r.getCachedTXT(domain)
-	if ok {
-		return result, nil
+	result, _, err := r.LookupTXTWithTTL(ctx, domain)
+	return result, err
+}
+
+// LookupTXTWithTTL is like [Resolver.LookupTXT] but also returns how long the
+// TXT records may be cached. The TTL is the smallest Ttl across the answer's
+// TXT resource records, capped by the resolver's max cache TTL. On a cache hit
+// it is the remaining lifetime of the cached entry, so the value shrinks as the
+// entry ages. A TTL of 0 means the TTL is unknown, for example when the
+// upstream resolver does not provide one.
+func (r *Resolver) LookupTXTWithTTL(ctx context.Context, domain string) ([]string, time.Duration, error) {
+	if result, ttl, ok := r.getCachedTXTWithTTL(domain); ok {
+		return result, ttl, nil
 	}
 
 	result, ttl, err := doRequestTXT(ctx, r.url, domain)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	cacheTTL := minTTL(time.Duration(ttl)*time.Second, r.maxCacheTTL)
 	r.cacheTXT(domain, result, cacheTTL)
-	return result, nil
+	return result, cacheTTL, nil
 }
 
 func (r *Resolver) getCachedIPAddr(domain string) ([]net.IPAddr, bool) {
@@ -170,21 +180,26 @@ func (r *Resolver) cacheIPAddr(domain string, ips []net.IPAddr, ttl time.Duratio
 }
 
 func (r *Resolver) getCachedTXT(domain string) ([]string, bool) {
+	txt, _, ok := r.getCachedTXTWithTTL(domain)
+	return txt, ok
+}
+
+func (r *Resolver) getCachedTXTWithTTL(domain string) ([]string, time.Duration, bool) {
 	r.mx.Lock()
 	defer r.mx.Unlock()
 
 	fqdn := dns.Fqdn(domain)
 	entry, ok := r.txtCache[fqdn]
 	if !ok {
-		return nil, false
+		return nil, 0, false
 	}
 
 	if time.Now().After(entry.expire) {
 		delete(r.txtCache, fqdn)
-		return nil, false
+		return nil, 0, false
 	}
 
-	return entry.txt, true
+	return entry.txt, time.Until(entry.expire), true
 }
 
 func (r *Resolver) cacheTXT(domain string, txt []string, ttl time.Duration) {

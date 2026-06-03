@@ -147,6 +147,62 @@ func TestLookupTXT(t *testing.T) {
 	}
 }
 
+func TestLookupTXTWithTTL(t *testing.T) {
+	domain := "example.com"
+	resolver := mockDoHResolver(t, map[uint16]*dns.Msg{
+		dns.TypeTXT: mockDNSAnswerTXT(dns.Fqdn(domain), []string{"dnslink=/ipns/example.com"}),
+	})
+	defer resolver.Close()
+
+	r, err := NewResolver(resolver.URL)
+	if err != nil {
+		t.Fatal("resolver cannot be initialised")
+	}
+
+	// cold lookup returns the record TTL from the answer (300s in the mock)
+	txt, ttl, err := r.LookupTXTWithTTL(context.Background(), domain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(txt) == 0 {
+		t.Fatal("got no TXT entries")
+	}
+	if ttl != 300*time.Second {
+		t.Fatalf("expected ttl 300s, got %s", ttl)
+	}
+
+	// warm lookup (cache hit) returns the remaining TTL, never more than the record TTL
+	_, ttl2, err := r.LookupTXTWithTTL(context.Background(), domain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ttl2 <= 0 || ttl2 > 300*time.Second {
+		t.Fatalf("expected remaining ttl in (0s, 300s], got %s", ttl2)
+	}
+}
+
+func TestLookupTXTWithTTLCappedByMaxCacheTTL(t *testing.T) {
+	domain := "example.com"
+	resolver := mockDoHResolver(t, map[uint16]*dns.Msg{
+		dns.TypeTXT: mockDNSAnswerTXT(dns.Fqdn(domain), []string{"dnslink=/ipns/example.com"}),
+	})
+	defer resolver.Close()
+
+	// record TTL (300s) is larger than the max cache TTL, so the returned TTL is capped
+	r, err := NewResolver(resolver.URL, WithMaxCacheTTL(10*time.Second))
+	if err != nil {
+		t.Fatal("resolver cannot be initialised")
+	}
+
+	_, ttl, err := r.LookupTXTWithTTL(context.Background(), domain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ttl != 10*time.Second {
+		t.Fatalf("expected ttl capped to 10s, got %s", ttl)
+	}
+}
+
 func TestLookupCache(t *testing.T) {
 	domain := "example.com"
 	resolver := mockDoHResolver(t, map[uint16]*dns.Msg{
