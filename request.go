@@ -19,7 +19,7 @@ const (
 
 var log = logging.Logger("doh")
 
-func doRequest(ctx context.Context, url string, m *dns.Msg) (*dns.Msg, error) {
+func doRequest(ctx context.Context, client *http.Client, url string, m *dns.Msg) (*dns.Msg, error) {
 	data, err := m.Pack()
 	if err != nil {
 		return nil, err
@@ -35,7 +35,7 @@ func doRequest(ctx context.Context, url string, m *dns.Msg) (*dns.Msg, error) {
 
 	req = req.WithContext(ctx)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -62,13 +62,13 @@ func doRequest(ctx context.Context, url string, m *dns.Msg) (*dns.Msg, error) {
 	return r, nil
 }
 
-func doRequestA(ctx context.Context, url string, domain string) ([]net.IPAddr, uint32, error) {
+func doRequestA(ctx context.Context, client *http.Client, url string, domain string) ([]net.IPAddr, uint32, error) {
 	fqdn := dns.Fqdn(domain)
 
 	m := new(dns.Msg)
 	m.SetQuestion(fqdn, dns.TypeA)
 
-	r, err := doRequest(ctx, url, m)
+	r, err := doRequest(ctx, client, url, m)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -90,13 +90,13 @@ func doRequestA(ctx context.Context, url string, domain string) ([]net.IPAddr, u
 	return result, ttl, nil
 }
 
-func doRequestAAAA(ctx context.Context, url string, domain string) ([]net.IPAddr, uint32, error) {
+func doRequestAAAA(ctx context.Context, client *http.Client, url string, domain string) ([]net.IPAddr, uint32, error) {
 	fqdn := dns.Fqdn(domain)
 
 	m := new(dns.Msg)
 	m.SetQuestion(fqdn, dns.TypeAAAA)
 
-	r, err := doRequest(ctx, url, m)
+	r, err := doRequest(ctx, client, url, m)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -119,13 +119,13 @@ func doRequestAAAA(ctx context.Context, url string, domain string) ([]net.IPAddr
 	return result, ttl, nil
 }
 
-func doRequestTXT(ctx context.Context, url string, domain string) ([]string, uint32, error) {
+func doRequestTXT(ctx context.Context, client *http.Client, url string, domain string) ([]string, uint32, error) {
 	fqdn := dns.Fqdn(domain)
 
 	m := new(dns.Msg)
 	m.SetQuestion(fqdn, dns.TypeTXT)
 
-	r, err := doRequest(ctx, url, m)
+	r, err := doRequest(ctx, client, url, m)
 	if err != nil {
 		return nil, 0, err
 	}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math"
 	"net"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -15,8 +16,9 @@ import (
 )
 
 type Resolver struct {
-	mx  sync.Mutex
-	url string
+	mx         sync.Mutex
+	url        string
+	httpClient *http.Client
 
 	// RR cache
 	ipCache     map[string]ipAddrEntry
@@ -52,6 +54,19 @@ func WithCacheDisabled() Option {
 	}
 }
 
+// WithHTTPClient sets the http.Client used for DoH requests, letting callers
+// control transport, timeouts, proxy, or TLS settings. When unset, the resolver
+// uses http.DefaultClient.
+func WithHTTPClient(client *http.Client) Option {
+	return func(tr *Resolver) error {
+		if client == nil {
+			return errors.New("http client must not be nil")
+		}
+		tr.httpClient = client
+		return nil
+	}
+}
+
 func NewResolver(url string, opts ...Option) (*Resolver, error) {
 	if strings.HasPrefix(url, "http:") &&
 		!strings.HasPrefix(url, "http://localhost") &&
@@ -66,6 +81,7 @@ func NewResolver(url string, opts ...Option) (*Resolver, error) {
 
 	r := &Resolver{
 		url:         url,
+		httpClient:  http.DefaultClient,
 		ipCache:     make(map[string]ipAddrEntry),
 		txtCache:    make(map[string]txtEntry),
 		maxCacheTTL: time.Duration(math.MaxUint32) * time.Second,
@@ -96,12 +112,12 @@ func (r *Resolver) LookupIPAddr(ctx context.Context, domain string) (result []ne
 
 	resch := make(chan response, 2)
 	go func() {
-		ip4, ttl, err := doRequestA(ctx, r.url, domain)
+		ip4, ttl, err := doRequestA(ctx, r.httpClient, r.url, domain)
 		resch <- response{ip4, ttl, err}
 	}()
 
 	go func() {
-		ip6, ttl, err := doRequestAAAA(ctx, r.url, domain)
+		ip6, ttl, err := doRequestAAAA(ctx, r.httpClient, r.url, domain)
 		resch <- response{ip6, ttl, err}
 	}()
 
@@ -129,7 +145,7 @@ func (r *Resolver) LookupTXT(ctx context.Context, domain string) ([]string, erro
 		return result, nil
 	}
 
-	result, ttl, err := doRequestTXT(ctx, r.url, domain)
+	result, ttl, err := doRequestTXT(ctx, r.httpClient, r.url, domain)
 	if err != nil {
 		return nil, err
 	}
