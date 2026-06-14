@@ -143,6 +143,12 @@ type cacheEntry[V any] struct {
 type cache[V any] struct {
 	mx      sync.RWMutex
 	entries map[string]cacheEntry[V]
+
+	// afterExpiredRead is a test seam. When non-nil, get calls it after dropping
+	// the read lock on an expired entry and before taking the write lock, so a
+	// test can drive a concurrent set or delete into that window deterministically.
+	// It is always nil in normal use.
+	afterExpiredRead func()
 }
 
 func newCache[V any]() *cache[V] {
@@ -167,6 +173,9 @@ func (c *cache[V]) get(key string) (V, bool) {
 	// The entry is expired. Re-check it under the write lock before deleting: in
 	// the gap between dropping the read lock and taking the write lock, a
 	// concurrent set may have refreshed it, or another get may have deleted it.
+	if c.afterExpiredRead != nil {
+		c.afterExpiredRead()
+	}
 	c.mx.Lock()
 	defer c.mx.Unlock()
 
