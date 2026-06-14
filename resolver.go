@@ -15,23 +15,13 @@ import (
 )
 
 type Resolver struct {
-	mx  sync.Mutex
 	url string
 
-	// RR cache
-	ipCache     map[string]ipAddrEntry
-	txtCache    map[string]txtEntry
+	// RR caches keyed by FQDN.
+	ipCache  *cache[[]net.IPAddr]
+	txtCache *cache[[]string]
+
 	maxCacheTTL time.Duration
-}
-
-type ipAddrEntry struct {
-	ips    []net.IPAddr
-	expire time.Time
-}
-
-type txtEntry struct {
-	txt    []string
-	expire time.Time
 }
 
 type Option func(*Resolver) error
@@ -66,8 +56,8 @@ func NewResolver(url string, opts ...Option) (*Resolver, error) {
 
 	r := &Resolver{
 		url:         url,
-		ipCache:     make(map[string]ipAddrEntry),
-		txtCache:    make(map[string]txtEntry),
+		ipCache:     newCache[[]net.IPAddr](),
+		txtCache:    newCache[[]string](),
 		maxCacheTTL: time.Duration(math.MaxUint32) * time.Second,
 	}
 
@@ -106,7 +96,7 @@ func (r *Resolver) LookupIPAddr(ctx context.Context, domain string) (result []ne
 	}()
 
 	var ttl uint32
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		r := <-resch
 		if r.err != nil {
 			return nil, r.err
@@ -139,64 +129,93 @@ func (r *Resolver) LookupTXT(ctx context.Context, domain string) ([]string, erro
 	return result, nil
 }
 
-func (r *Resolver) getCachedIPAddr(domain string) ([]net.IPAddr, bool) {
-	r.mx.Lock()
-	defer r.mx.Unlock()
+// cacheEntry is a cached value and the time it expires.
+type cacheEntry[V any] struct {
+	val    V
+	expire time.Time
+}
 
-	fqdn := dns.Fqdn(domain)
-	entry, ok := r.ipCache[fqdn]
+// cache is a TTL cache keyed by string, safe for concurrent use. A read that
+// hits a fresh entry takes only the read lock, so concurrent reads run in
+// parallel. Deleting an expired entry needs the write lock. Go cannot upgrade a
+// read lock to a write lock in place, so get drops the read lock, takes the
+// write lock, and re-checks the entry before it deletes.
+type cache[V any] struct {
+	mx      sync.RWMutex
+	entries map[string]cacheEntry[V]
+
+	// afterExpiredRead is a test seam. When non-nil, get calls it after dropping
+	// the read lock on an expired entry and before taking the write lock, so a
+	// test can drive a concurrent set or delete into that window deterministically.
+	// It is always nil in normal use.
+	afterExpiredRead func()
+}
+
+func newCache[V any]() *cache[V] {
+	return &cache[V]{entries: make(map[string]cacheEntry[V])}
+}
+
+// get returns the value stored under key, or the zero value and ok=false when
+// the key is absent or expired. It deletes an expired entry before returning.
+func (c *cache[V]) get(key string) (V, bool) {
+	c.mx.RLock()
+	entry, ok := c.entries[key]
+	c.mx.RUnlock()
+
+	var zero V
 	if !ok {
-		return nil, false
+		return zero, false
+	}
+	if !time.Now().After(entry.expire) {
+		return entry.val, true
 	}
 
+	// The entry is expired. Re-check it under the write lock before deleting: in
+	// the gap between dropping the read lock and taking the write lock, a
+	// concurrent set may have refreshed it, or another get may have deleted it.
+	if c.afterExpiredRead != nil {
+		c.afterExpiredRead()
+	}
+	c.mx.Lock()
+	defer c.mx.Unlock()
+
+	entry, ok = c.entries[key]
+	if !ok {
+		return zero, false
+	}
 	if time.Now().After(entry.expire) {
-		delete(r.ipCache, fqdn)
-		return nil, false
+		delete(c.entries, key)
+		return zero, false
+	}
+	return entry.val, true
+}
+
+// set stores val under key for the given TTL. A zero TTL stores nothing, so a
+// disabled cache stays empty.
+func (c *cache[V]) set(key string, val V, ttl time.Duration) {
+	if ttl == 0 {
+		return
 	}
 
-	return entry.ips, true
+	c.mx.Lock()
+	defer c.mx.Unlock()
+	c.entries[key] = cacheEntry[V]{val: val, expire: time.Now().Add(ttl)}
+}
+
+func (r *Resolver) getCachedIPAddr(domain string) ([]net.IPAddr, bool) {
+	return r.ipCache.get(dns.Fqdn(domain))
 }
 
 func (r *Resolver) cacheIPAddr(domain string, ips []net.IPAddr, ttl time.Duration) {
-	if ttl == 0 {
-		return
-	}
-
-	r.mx.Lock()
-	defer r.mx.Unlock()
-
-	fqdn := dns.Fqdn(domain)
-	r.ipCache[fqdn] = ipAddrEntry{ips, time.Now().Add(ttl)}
+	r.ipCache.set(dns.Fqdn(domain), ips, ttl)
 }
 
 func (r *Resolver) getCachedTXT(domain string) ([]string, bool) {
-	r.mx.Lock()
-	defer r.mx.Unlock()
-
-	fqdn := dns.Fqdn(domain)
-	entry, ok := r.txtCache[fqdn]
-	if !ok {
-		return nil, false
-	}
-
-	if time.Now().After(entry.expire) {
-		delete(r.txtCache, fqdn)
-		return nil, false
-	}
-
-	return entry.txt, true
+	return r.txtCache.get(dns.Fqdn(domain))
 }
 
 func (r *Resolver) cacheTXT(domain string, txt []string, ttl time.Duration) {
-	if ttl == 0 {
-		return
-	}
-
-	r.mx.Lock()
-	defer r.mx.Unlock()
-
-	fqdn := dns.Fqdn(domain)
-	r.txtCache[fqdn] = txtEntry{txt, time.Now().Add(ttl)}
+	r.txtCache.set(dns.Fqdn(domain), txt, ttl)
 }
 
 func minTTL(a, b time.Duration) time.Duration {
