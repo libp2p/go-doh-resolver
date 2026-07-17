@@ -107,7 +107,7 @@ func (r *Resolver) LookupIPAddr(ctx context.Context, domain string) (result []ne
 
 	var ttl uint32
 	first := true
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		r := <-resch
 		if r.err != nil {
 			return nil, r.err
