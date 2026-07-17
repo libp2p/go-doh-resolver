@@ -132,12 +132,14 @@ func doRequestTXT(ctx context.Context, url string, domain string) ([]string, uin
 
 	var ttl uint32
 	var result []string
+	first := true
 	for _, rr := range r.Answer {
 		switch v := rr.(type) {
 		case *dns.TXT:
 			result = append(result, v.Txt...)
-			if ttl == 0 || v.Hdr.Ttl < ttl {
+			if first || v.Hdr.Ttl < ttl {
 				ttl = v.Hdr.Ttl
+				first = false
 			}
 
 		default:

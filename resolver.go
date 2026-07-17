@@ -37,10 +37,10 @@ type txtEntry struct {
 type Option func(*Resolver) error
 
 // Specifies the maximum time entries are valid in the cache
-// A maxCacheTTL of zero is equivalent to `WithCacheDisabled`
+// A maxCacheTTL of zero or less is equivalent to `WithCacheDisabled`
 func WithMaxCacheTTL(maxCacheTTL time.Duration) Option {
 	return func(tr *Resolver) error {
-		tr.maxCacheTTL = maxCacheTTL
+		tr.maxCacheTTL = max(0, maxCacheTTL)
 		return nil
 	}
 }
@@ -130,10 +130,11 @@ func (r *Resolver) LookupTXT(ctx context.Context, domain string) ([]string, erro
 
 // LookupTXTWithTTL is like [Resolver.LookupTXT] but also returns how long the
 // TXT records may be cached. The TTL is the smallest Ttl across the answer's
-// TXT resource records, capped by the resolver's max cache TTL. On a cache hit
-// it is the remaining lifetime of the cached entry, so the value shrinks as the
-// entry ages. A TTL of 0 means the TTL is unknown, for example when the
-// upstream resolver does not provide one.
+// TXT resource records, capped by the resolver's max cache TTL ([WithMaxCacheTTL]).
+// On a cache hit it is the remaining lifetime of the cached entry, so the value
+// shrinks as the entry ages. A TTL of 0 means the records may not be cached:
+// because the cache is disabled ([WithCacheDisabled]), the records themselves
+// carry a TTL of 0, or the upstream resolver did not provide one.
 func (r *Resolver) LookupTXTWithTTL(ctx context.Context, domain string) ([]string, time.Duration, error) {
 	if result, ttl, ok := r.getCachedTXTWithTTL(domain); ok {
 		return result, ttl, nil
@@ -168,7 +169,7 @@ func (r *Resolver) getCachedIPAddr(domain string) ([]net.IPAddr, bool) {
 }
 
 func (r *Resolver) cacheIPAddr(domain string, ips []net.IPAddr, ttl time.Duration) {
-	if ttl == 0 {
+	if ttl <= 0 {
 		return
 	}
 
@@ -194,16 +195,19 @@ func (r *Resolver) getCachedTXTWithTTL(domain string) ([]string, time.Duration, 
 		return nil, 0, false
 	}
 
-	if time.Now().After(entry.expire) {
+	// Read the clock once: a second read after an expiry check could land
+	// past the deadline and report a negative TTL.
+	remaining := time.Until(entry.expire)
+	if remaining <= 0 {
 		delete(r.txtCache, fqdn)
 		return nil, 0, false
 	}
 
-	return entry.txt, time.Until(entry.expire), true
+	return entry.txt, remaining, true
 }
 
 func (r *Resolver) cacheTXT(domain string, txt []string, ttl time.Duration) {
-	if ttl == 0 {
+	if ttl <= 0 {
 		return
 	}
 

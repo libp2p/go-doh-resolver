@@ -203,6 +203,100 @@ func TestLookupTXTWithTTLCappedByMaxCacheTTL(t *testing.T) {
 	}
 }
 
+func TestLookupTXTWithTTLCacheDisabled(t *testing.T) {
+	domain := "example.com"
+	resolver := mockDoHResolver(t, map[uint16]*dns.Msg{
+		dns.TypeTXT: mockDNSAnswerTXT(dns.Fqdn(domain), []string{"dnslink=/ipns/example.com"}),
+	})
+	defer resolver.Close()
+
+	// a disabled cache means nothing may be cached, so the reported TTL is 0
+	// no matter what the record says (300s in the mock)
+	r, err := NewResolver(resolver.URL, WithCacheDisabled())
+	if err != nil {
+		t.Fatal("resolver cannot be initialised")
+	}
+
+	txt, ttl, err := r.LookupTXTWithTTL(context.Background(), domain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(txt) == 0 {
+		t.Fatal("got no TXT entries")
+	}
+	if ttl != 0 {
+		t.Fatalf("expected ttl 0 with cache disabled, got %s", ttl)
+	}
+	if _, _, ok := r.getCachedTXTWithTTL(domain); ok {
+		t.Fatal("expected cache to stay empty")
+	}
+
+	// a nonsensical negative cap behaves like a disabled cache and is never
+	// reported as a negative TTL
+	rNeg, err := NewResolver(resolver.URL, WithMaxCacheTTL(-time.Second))
+	if err != nil {
+		t.Fatal("resolver cannot be initialised")
+	}
+
+	_, ttl, err = rNeg.LookupTXTWithTTL(context.Background(), domain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ttl != 0 {
+		t.Fatalf("expected ttl 0 with negative cap, got %s", ttl)
+	}
+	if _, _, ok := rNeg.getCachedTXTWithTTL(domain); ok {
+		t.Fatal("expected cache to stay empty with negative cap")
+	}
+}
+
+func mockDNSAnswerTXTWithTTLs(name string, ttls []uint32) *dns.Msg {
+	m := new(dns.Msg)
+	for _, ttl := range ttls {
+		m.Answer = append(m.Answer, &dns.TXT{
+			Hdr: dns.RR_Header{Name: name, Rrtype: dns.TypeTXT, Class: dns.ClassINET, Ttl: ttl},
+			Txt: []string{"dnslink=/ipns/example.com"},
+		})
+	}
+	return m
+}
+
+func TestLookupTXTWithTTLMixedTTLs(t *testing.T) {
+	// per RFC 2181 an RRset with differing TTLs is treated as having the
+	// lowest one, regardless of record order, and a genuine TTL 0 wins too
+	for _, tc := range []struct {
+		name     string
+		ttls     []uint32
+		expected time.Duration
+	}{
+		{"low first", []uint32{60, 300}, 60 * time.Second},
+		{"low last", []uint32{300, 60}, 60 * time.Second},
+		{"zero first", []uint32{0, 300}, 0},
+		{"zero last", []uint32{300, 0}, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			domain := "example.com"
+			resolver := mockDoHResolver(t, map[uint16]*dns.Msg{
+				dns.TypeTXT: mockDNSAnswerTXTWithTTLs(dns.Fqdn(domain), tc.ttls),
+			})
+			defer resolver.Close()
+
+			r, err := NewResolver(resolver.URL)
+			if err != nil {
+				t.Fatal("resolver cannot be initialised")
+			}
+
+			_, ttl, err := r.LookupTXTWithTTL(context.Background(), domain)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if ttl != tc.expected {
+				t.Fatalf("expected ttl %s, got %s", tc.expected, ttl)
+			}
+		})
+	}
+}
+
 func TestLookupCache(t *testing.T) {
 	domain := "example.com"
 	resolver := mockDoHResolver(t, map[uint16]*dns.Msg{
