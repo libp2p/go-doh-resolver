@@ -117,6 +117,34 @@ func TestLookupIPAddr(t *testing.T) {
 	}
 }
 
+func TestLookupIPAddrSingleFamily(t *testing.T) {
+	domain := "example.com"
+	resolver := mockDoHResolver(t, map[uint16]*dns.Msg{
+		dns.TypeA:    mockDNSAnswerA(dns.Fqdn(domain), net.IPv4(127, 0, 0, 1)),
+		dns.TypeAAAA: new(dns.Msg), // IPv4-only domain: empty AAAA answer
+	})
+	defer resolver.Close()
+
+	r, err := NewResolver(resolver.URL)
+	if err != nil {
+		t.Fatal("resolver cannot be initialised")
+	}
+
+	ips, err := r.LookupIPAddr(context.Background(), domain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ips) != 1 {
+		t.Fatalf("expected 1 IP, got %d", len(ips))
+	}
+
+	// the empty AAAA answer carries no RRset TTL and must not zero out the A
+	// record's TTL (300s in the mock), so the result stays cacheable
+	if _, ok := r.getCachedIPAddr(domain); !ok {
+		t.Fatal("expected single-family result to be cached")
+	}
+}
+
 func TestLookupTXT(t *testing.T) {
 	domain := "example.com"
 	resolver := mockDoHResolver(t, map[uint16]*dns.Msg{

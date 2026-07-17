@@ -106,6 +106,7 @@ func (r *Resolver) LookupIPAddr(ctx context.Context, domain string) (result []ne
 	}()
 
 	var ttl uint32
+	first := true
 	for i := 0; i < 2; i++ {
 		r := <-resch
 		if r.err != nil {
@@ -113,8 +114,13 @@ func (r *Resolver) LookupIPAddr(ctx context.Context, domain string) (result []ne
 		}
 
 		result = append(result, r.ips...)
-		if ttl == 0 || r.ttl < ttl {
+		// The combined TTL is the lowest across the A and AAAA answers that
+		// carried records; an empty answer has no RRset TTL to contribute, so
+		// its placeholder 0 must not zero out the other family's TTL. A
+		// genuine 0 from an existing RRset (do not cache) still wins.
+		if len(r.ips) > 0 && (first || r.ttl < ttl) {
 			ttl = r.ttl
+			first = false
 		}
 	}
 
