@@ -5,7 +5,7 @@ go 1.25
 require (
 	github.com/ipfs/go-log/v2 v2.5.1
 	github.com/miekg/dns v1.1.62
-	github.com/multiformats/go-multiaddr-dns v0.4.1
+	github.com/multiformats/go-multiaddr-dns v0.6.0
 )
 
 require (
