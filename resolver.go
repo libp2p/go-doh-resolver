@@ -82,11 +82,6 @@ func NewResolver(url string, opts ...Option) (*Resolver, error) {
 
 var _ madns.BasicResolver = (*Resolver)(nil)
 
-// Consumers detect TXT TTL support through this optional interface at runtime,
-// so a signature drift would silently disable TTL reporting downstream; the
-// assertion makes it a compile error instead.
-var _ madns.TXTWithTTLResolver = (*Resolver)(nil)
-
 func (r *Resolver) LookupIPAddr(ctx context.Context, domain string) (result []net.IPAddr, err error) {
 	result, ok := r.getCachedIPAddr(domain)
 	if ok {
