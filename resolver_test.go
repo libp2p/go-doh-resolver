@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -391,6 +392,46 @@ func TestCleartextLocalhostEndpoint(t *testing.T) {
 				t.Fatalf("using %q DoH endpoint over unencrypted http:// expected to work, but unexpected error was returned instead", tc.hostname)
 			}
 		})
+	}
+}
+
+// countingRoundTripper counts the requests passing through it before delegating
+// to the wrapped transport.
+type countingRoundTripper struct {
+	rt    http.RoundTripper
+	count atomic.Int64
+}
+
+func (c *countingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	c.count.Add(1)
+	return c.rt.RoundTrip(req)
+}
+
+func TestWithHTTPClient(t *testing.T) {
+	domain := "example.com"
+	resolver := mockDoHResolver(t, map[uint16]*dns.Msg{
+		dns.TypeTXT: mockDNSAnswerTXT(dns.Fqdn(domain), []string{"dnslink=/ipns/example.com"}),
+	})
+	defer resolver.Close()
+
+	rt := &countingRoundTripper{rt: http.DefaultTransport}
+	r, err := NewResolver(resolver.URL, WithHTTPClient(&http.Client{Transport: rt}))
+	if err != nil {
+		t.Fatal("resolver cannot be initialised")
+	}
+
+	if _, err := r.LookupTXT(context.Background(), domain); err != nil {
+		t.Fatal(err)
+	}
+	if rt.count.Load() == 0 {
+		t.Fatal("expected the custom http client to be used")
+	}
+}
+
+func TestWithHTTPClientNil(t *testing.T) {
+	_, err := NewResolver("https://cloudflare-dns.com/dns-query", WithHTTPClient(nil))
+	if err == nil {
+		t.Fatal("expected an error when passing a nil http client")
 	}
 }
 
